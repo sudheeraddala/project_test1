@@ -1,0 +1,13 @@
+ingests data from your own apps, SaaS apps, and AWS services and routes that data to targets.---event bridge
+
+AWS Step Functions lets you orchestrate multiple AWS services into serverless workflows so that you can build and update applications quickly.--Aws step function
+
+ EventBridge rule----- will capture the app flow name from the failed job and trigger a Lambda function
+ 
+ CALL ingestion_audit.update_appflow_subscription('appflow1', 'mail@123.com'); -- add new email
+ 
+CALL ingestion_audit.update_appflow_subscription('appflow2', 'emailid3, emailid4');-- add duplicate email ids
+
+CALL ingestion_audit.update_appflow_subscription('appflow2', 'emailid3, emailid4'); -- add multiple email ids
+
+CALL ingestion_audit.update_appflow_subscription('all','email@all.com'); -- to update all appflows with same email id
