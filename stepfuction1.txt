@@ -1,0 +1,112 @@
+arn:aws:lambda:us-east-1:083760424738:function:ing-orch-ingestion_Fin_Ncollationcheck
+
+
+{
+  "Comment": "A description of my state machine",
+  "StartAt": "Load from SVV_PRIVILEGES",
+  "States": {
+    "Load from SVV_PRIVILEGES": {
+      "Type": "Task",
+      "Next": "ExecuteStatement",
+      "Parameters": {
+        "ClusterIdentifier": "odp-fin-dev-report-redshift",
+        "Database": "gehc_data",
+        "Sql": "CALL ingestiongaurdrailreports.sp_truncate_and_load_schema_privileges(); ",
+        "SecretArn": "arn:aws:secretsmanager:us-east-1:083760424738:secret:ing-orch-odp-fin-nprod-grdrail-fsso-secret-WVp331"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:executeStatement",
+      "ResultPath": null
+    },
+    "ExecuteStatement": {
+      "Type": "Task",
+      "Next": "Wait for 5 seconds for previous step to complete",
+      "Parameters": {
+        "ClusterIdentifier": "odp-fin-dev-report-redshift",
+        "Database": "gehc_data",
+        "Sql": "Select * from ingestiongaurdrailreports.collation_issue_list_vw;",
+        "SecretArn": "arn:aws:secretsmanager:us-east-1:083760424738:secret:ing-orch-odp-fin-nprod-grdrail-fsso-secret-WVp331"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:executeStatement",
+      "ResultPath": "$.sql_output"
+    },
+    "Wait for 5 seconds for previous step to complete": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "DescribeStatement"
+    },
+    "DescribeStatement": {
+      "Type": "Task",
+      "Parameters": {
+        "Id.$": "$.sql_output.Id"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:describeStatement",
+      "Next": "Choice",
+      "ResultPath": "$.sql_output"
+    },
+    "Choice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.sql_output.Status",
+          "StringEquals": "FINISHED",
+          "Next": "GetStatementResult"
+        },
+        {
+          "Variable": "$.sql_output.Status",
+          "StringEquals": "FAILED",
+          "Next": "Fail"
+        },
+        {
+          "Variable": "$.sql_output.Status",
+          "StringEquals": "STARTED",
+          "Next": "Wait for 5 seconds for previous step to complete"
+        }
+      ]
+    },
+    "GetStatementResult": {
+      "Type": "Task",
+      "Parameters": {
+        "Id.$": "$.sql_output.Id"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:getStatementResult",
+      "ResultPath": "$.sql_output",
+      "Next": "Pass"
+    },
+    "Pass": {
+      "Type": "Pass",
+      "Next": "Lambda Invoke",
+      "Parameters": {
+        "output.$": "$.sql_output.Records[0][0].StringValue"
+      },
+      "ResultPath": "$.Output"
+    },
+    "Fail": {
+      "Type": "Fail"
+    },
+    "Lambda Invoke": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:083760424738:function:ing-orch-ingestion_redshift_collationcheck",
+        "Payload": {
+          "lambdainput.$": "$.sql_output.Records[0][0].StringValue"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    }
+  }
+}
